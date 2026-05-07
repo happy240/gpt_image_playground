@@ -126,6 +126,55 @@ describe('callImageApi', () => {
     )
   })
 
+  it('calls Azure OpenAI images endpoint with api-key header and api-version query', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: 'aW1hZ2U=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    await callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        profiles: [{
+          ...DEFAULT_SETTINGS.profiles[0],
+          id: 'azure-1',
+          name: 'Azure',
+          provider: 'azure-openai',
+          baseUrl: 'https://mpn-openai-eastus2.cognitiveservices.azure.com',
+          apiKey: 'azure-key',
+          model: 'gpt-image-2',
+          apiMode: 'images',
+          authScheme: 'apiKey',
+          baseUrlMode: 'raw',
+          azureDeployment: 'gpt-image-2',
+          azureApiVersion: '2024-02-01',
+          apiProxy: false,
+          codexCli: false,
+        }],
+        activeProfileId: 'azure-1',
+        baseUrl: 'https://mpn-openai-eastus2.cognitiveservices.azure.com',
+        apiKey: 'azure-key',
+        model: 'gpt-image-2',
+        apiMode: 'images',
+        codexCli: false,
+        apiProxy: false,
+      },
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS },
+      inputImageDataUrls: [],
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      'https://mpn-openai-eastus2.cognitiveservices.azure.com/openai/deployments/gpt-image-2/images/generations?api-version=2024-02-01',
+    )
+    const headers = (init as RequestInit).headers as Record<string, string>
+    expect(headers).toHaveProperty('api-key', 'azure-key')
+    expect(headers).not.toHaveProperty('Authorization')
+  })
+
   it('does not add cache request headers that require extra CORS allow-list entries', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: [{ b64_json: 'aW1hZ2U=' }],

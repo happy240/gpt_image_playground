@@ -1,6 +1,6 @@
 import type { ApiProfile, CustomProviderDefinition, CustomProviderPollMapping, CustomProviderResultMapping, CustomProviderSubmitMapping, ImageApiResponse, ResponsesApiResponse, TaskParams } from '../types'
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
-import { buildApiUrl, isApiProxyAvailable, readClientDevProxyConfig } from './devProxy'
+import { buildApiUrl, buildApiUrlWithMode, isApiProxyAvailable, readClientDevProxyConfig } from './devProxy'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
@@ -77,9 +77,46 @@ function normalizeImageApiPayload(value: unknown): ImageApiResponse {
 }
 
 function createRequestHeaders(profile: ApiProfile): Record<string, string> {
-  return {
-    Authorization: `Bearer ${profile.apiKey}`,
+  if (profile.authScheme === 'apiKey') {
+    return {
+      'api-key': profile.apiKey,
+    }
   }
+  return { Authorization: `Bearer ${profile.apiKey}` }
+}
+
+function isAzureProfile(profile: ApiProfile): boolean {
+  return profile.provider === 'azure-openai'
+}
+
+function buildAzurePath(profile: ApiProfile, path: string): string {
+  const deployment = profile.azureDeployment.trim()
+  if (!deployment) return path
+  return `openai/deployments/${encodeURIComponent(deployment)}/${path.replace(/^\/+/, '')}`
+}
+
+function getResponsesPath(profile: ApiProfile): string {
+  const path = 'responses'
+  return isAzureProfile(profile) ? buildAzurePath(profile, path) : path
+}
+
+function getImagesPath(profile: ApiProfile, path: string): string {
+  return isAzureProfile(profile) ? buildAzurePath(profile, path) : path
+}
+
+function buildProfileApiUrl(
+  profile: ApiProfile,
+  path: string,
+  proxyConfig: ReturnType<typeof readClientDevProxyConfig>,
+  useApiProxy: boolean,
+): string {
+  return buildApiUrlWithMode(profile.baseUrl, path, proxyConfig, useApiProxy, profile.baseUrlMode)
+}
+
+function withAzureApiVersion(profile: ApiProfile, path: string): string {
+  if (!isAzureProfile(profile)) return path
+  const version = profile.azureApiVersion.trim()
+  return appendQuery(path, version ? { 'api-version': version } : undefined)
 }
 
 function createResponsesImageTool(
@@ -314,7 +351,8 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         formData.append('mask', maskBlob, 'mask.png')
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy), {
+      const editPath = withAzureApiVersion(profile, getImagesPath(profile, paths.editPath))
+      response = await fetch(buildProfileApiUrl(profile, editPath, proxyConfig, useApiProxy), {
         method: 'POST',
         headers: requestHeaders,
         cache: 'no-store',
@@ -341,7 +379,8 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         body.n = params.n
       }
 
-      response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
+      const genPath = withAzureApiVersion(profile, getImagesPath(profile, paths.generationPath))
+      response = await fetch(buildProfileApiUrl(profile, genPath, proxyConfig, useApiProxy), {
         method: 'POST',
         headers: {
           ...requestHeaders,
@@ -692,7 +731,8 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       tool_choice: 'required',
     }
 
-    const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
+    const responsesPath = withAzureApiVersion(profile, getResponsesPath(profile))
+    const response = await fetch(buildProfileApiUrl(profile, responsesPath, proxyConfig, useApiProxy), {
       method: 'POST',
       headers: {
         ...requestHeaders,

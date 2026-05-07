@@ -1,9 +1,12 @@
 // ===== 设置 =====
 
 export type ApiMode = 'images' | 'responses'
-export type BuiltInApiProvider = 'openai' | 'fal'
+export type BuiltInApiProvider = 'openai' | 'azure-openai' | 'fal'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
+
+export type ApiAuthScheme = 'bearer' | 'apiKey'
+export type ApiBaseUrlMode = 'openai_v1' | 'raw'
 
 export type CustomProviderRequestMethod = 'GET' | 'POST'
 export type CustomProviderContentType = 'json' | 'multipart'
@@ -63,6 +66,14 @@ export interface ApiProfile {
   apiMode: ApiMode
   codexCli: boolean
   apiProxy: boolean
+  /** 鉴权方式。OpenAI 为 bearer；Azure OpenAI 为 apiKey */
+  authScheme: ApiAuthScheme
+  /** Base URL 拼接方式。OpenAI 为 openai_v1（自动补 /v1）；Azure 为 raw（不补 /v1） */
+  baseUrlMode: ApiBaseUrlMode
+  /** Azure OpenAI 部署名称（deployments/{deployment}） */
+  azureDeployment: string
+  /** Azure OpenAI api-version */
+  azureApiVersion: string
 }
 
 export interface AppSettings {

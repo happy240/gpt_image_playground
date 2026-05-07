@@ -263,6 +263,7 @@ export default function SettingsModal() {
   const providerOptions = [
     { label: '创建自定义服务商', value: ADD_CUSTOM_PROVIDER_VALUE, variant: 'action' as const },
     { label: 'OpenAI 兼容接口', value: 'openai' },
+    { label: 'Azure OpenAI', value: 'azure-openai' },
     { label: 'fal.ai', value: 'fal' },
     ...draft.customProviders.map((provider) => ({
       label: provider.name,
@@ -354,13 +355,17 @@ export default function SettingsModal() {
     const normalizedProfiles = nextDraft.profiles.map((profile) => {
       const normalizedBaseUrl = profile.provider === 'fal'
         ? profile.baseUrl.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL
-        : normalizeBaseUrl(profile.baseUrl.trim() || DEFAULT_SETTINGS.baseUrl)
+        : profile.provider === 'azure-openai'
+          ? profile.baseUrl.trim().replace(/\/+$/, '')
+          : normalizeBaseUrl(profile.baseUrl.trim() || DEFAULT_SETTINGS.baseUrl)
       const defaultModel = profile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(profile.apiMode)
       return {
         ...profile,
         name: profile.name.trim() || (profile.id === DEFAULT_OPENAI_PROFILE_ID ? '默认' : '新配置'),
         baseUrl: normalizedBaseUrl,
         model: profile.model.trim() || defaultModel,
+        azureDeployment: profile.provider === 'azure-openai' ? profile.azureDeployment.trim() : profile.azureDeployment,
+        azureApiVersion: profile.provider === 'azure-openai' ? profile.azureApiVersion.trim() : profile.azureApiVersion,
         timeout: Number(profile.timeout) || DEFAULT_SETTINGS.timeout,
         apiProxy: profile.provider === 'openai' && apiProxyAvailable ? profile.apiProxy : false,
         codexCli: profile.provider === 'openai' ? profile.codexCli : false,
@@ -1000,7 +1005,7 @@ export default function SettingsModal() {
                     onBlur={(e) => commitActiveProfilePatch({ baseUrl: e.target.value })}
                     type="text"
                     disabled={apiProxyEnabled}
-                    placeholder={DEFAULT_SETTINGS.baseUrl}
+                    placeholder={activeProfile.provider === 'azure-openai' ? 'https://{resource}.cognitiveservices.azure.com' : DEFAULT_SETTINGS.baseUrl}
                     className={`w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50 ${apiProxyEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   />
                   <div data-selectable-text className="mt-1.5 min-h-[22px] flex items-center text-xs text-gray-500 dark:text-gray-500">
@@ -1011,6 +1016,39 @@ export default function SettingsModal() {
                     )}
                   </div>
                 </label>
+              )}
+
+              {activeProfile.provider === 'azure-openai' && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">Deployment</span>
+                    <input
+                      value={activeProfile.azureDeployment}
+                      onChange={(e) => updateActiveProfile({ azureDeployment: e.target.value })}
+                      onBlur={(e) => commitActiveProfilePatch({ azureDeployment: e.target.value })}
+                      type="text"
+                      placeholder="gpt-image-2"
+                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                    />
+                    <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
+                      Azure OpenAI 使用部署名，不是模型 ID。
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Version</span>
+                    <input
+                      value={activeProfile.azureApiVersion}
+                      onChange={(e) => updateActiveProfile({ azureApiVersion: e.target.value })}
+                      onBlur={(e) => commitActiveProfilePatch({ azureApiVersion: e.target.value })}
+                      type="text"
+                      placeholder="2024-02-01"
+                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                    />
+                    <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
+                      将自动追加到请求的 <code className="bg-gray-100 dark:bg-white/[0.06] px-1 py-0.5 rounded">api-version</code>。
+                    </div>
+                  </label>
+                </div>
               )}
 
               {activeProfile.provider === 'openai' && (
@@ -1063,7 +1101,7 @@ export default function SettingsModal() {
                     onChange={(e) => updateActiveProfile({ apiKey: e.target.value })}
                     onBlur={(e) => commitActiveProfilePatch({ apiKey: e.target.value })}
                     type={showApiKey ? 'text' : 'password'}
-                    placeholder={activeProfile.provider === 'fal' ? 'FAL_KEY' : 'sk-...'}
+                    placeholder={activeProfile.provider === 'fal' ? 'FAL_KEY' : activeProfile.provider === 'azure-openai' ? 'Azure API Key' : 'sk-...'}
                     className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
                   />
                   <button

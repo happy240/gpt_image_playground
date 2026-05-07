@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildApiUrl } from './devProxy'
+import { buildApiUrl, buildApiUrlWithMode } from './devProxy'
 
 describe('buildApiUrl', () => {
   it('uses the same-origin proxy prefix when API proxy is enabled', () => {
@@ -34,6 +34,14 @@ describe('buildApiUrl', () => {
   it('uses the configured API URL directly when API proxy is disabled', () => {
     expect(buildApiUrl('http://api.example.com/v1', 'responses', null, false)).toBe(
       'http://api.example.com/v1/responses',
+    )
+  })
+})
+
+describe('buildApiUrlWithMode', () => {
+  it('does not append the v1 segment in raw mode', () => {
+    expect(buildApiUrlWithMode('https://azure.example.com', 'openai/deployments/d/responses', null, false, 'raw')).toBe(
+      'https://azure.example.com/openai/deployments/d/responses',
     )
   })
 })

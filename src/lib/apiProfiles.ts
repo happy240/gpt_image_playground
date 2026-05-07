@@ -1,4 +1,6 @@
 import type {
+  ApiAuthScheme,
+  ApiBaseUrlMode,
   ApiMode,
   ApiProfile,
   ApiProvider,
@@ -20,9 +22,10 @@ export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
+export const DEFAULT_AZURE_API_VERSION = '2024-02-01'
 export const DEFAULT_API_TIMEOUT = 600
 
-const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
+const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'azure-openai', 'fal'])
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
   generationPath: 'images/generations',
   editPath: 'images/edits',
@@ -264,6 +267,30 @@ export function createDefaultOpenAIProfile(overrides: Partial<ApiProfile> = {}):
     apiMode: 'images',
     codexCli: false,
     apiProxy: false,
+    authScheme: 'bearer',
+    baseUrlMode: 'openai_v1',
+    azureDeployment: '',
+    azureApiVersion: DEFAULT_AZURE_API_VERSION,
+    ...overrides,
+  }
+}
+
+export function createDefaultAzureOpenAIProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return {
+    id: `azure-openai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name: '新配置',
+    provider: 'azure-openai',
+    baseUrl: '',
+    apiKey: '',
+    model: DEFAULT_IMAGES_MODEL,
+    timeout: DEFAULT_API_TIMEOUT,
+    apiMode: 'images',
+    codexCli: false,
+    apiProxy: false,
+    authScheme: 'apiKey',
+    baseUrlMode: 'raw',
+    azureDeployment: '',
+    azureApiVersion: DEFAULT_AZURE_API_VERSION,
     ...overrides,
   }
 }
@@ -280,6 +307,10 @@ export function createDefaultFalProfile(overrides: Partial<ApiProfile> = {}): Ap
     apiMode: 'images',
     codexCli: false,
     apiProxy: false,
+    authScheme: 'bearer',
+    baseUrlMode: 'openai_v1',
+    azureDeployment: '',
+    azureApiVersion: DEFAULT_AZURE_API_VERSION,
     ...overrides,
   }
 }
@@ -294,6 +325,24 @@ export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvi
       apiMode: 'images',
       codexCli: false,
       apiProxy: false,
+      authScheme: 'bearer',
+      baseUrlMode: 'openai_v1',
+      azureDeployment: '',
+      azureApiVersion: DEFAULT_AZURE_API_VERSION,
+    }
+  }
+
+  if (provider === 'azure-openai') {
+    return {
+      ...createDefaultAzureOpenAIProfile({
+        id: profile.id,
+        name: profile.name,
+      }),
+      // 保留用户已填写的 key/timeout 等通用字段（如果存在）
+      apiKey: profile.apiKey,
+      timeout: profile.timeout,
+      apiMode: profile.apiMode,
+      model: profile.model || DEFAULT_IMAGES_MODEL,
     }
   }
 
@@ -307,6 +356,10 @@ export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvi
       apiMode: 'images',
       codexCli: false,
       apiProxy: false,
+      authScheme: 'bearer',
+      baseUrlMode: 'openai_v1',
+      azureDeployment: '',
+      azureApiVersion: DEFAULT_AZURE_API_VERSION,
     }
   }
 
@@ -315,14 +368,26 @@ export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvi
     provider,
     baseUrl: DEFAULT_BASE_URL,
     model: DEFAULT_IMAGES_MODEL,
+    authScheme: 'bearer',
+    baseUrlMode: 'openai_v1',
+    azureDeployment: '',
+    azureApiVersion: DEFAULT_AZURE_API_VERSION,
   }
 }
 
 export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfile>, customProviderIds = new Set<string>()): ApiProfile {
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const rawProvider = typeof record.provider === 'string' ? record.provider : ''
-  const provider: ApiProvider = rawProvider === 'fal' || customProviderIds.has(rawProvider) ? rawProvider : 'openai'
-  const defaults = provider === 'fal' ? createDefaultFalProfile(fallback) : createDefaultOpenAIProfile(fallback)
+  const provider: ApiProvider =
+    rawProvider === 'fal' || rawProvider === 'azure-openai' || customProviderIds.has(rawProvider)
+      ? rawProvider
+      : 'openai'
+  const defaults =
+    provider === 'fal'
+      ? createDefaultFalProfile(fallback)
+      : provider === 'azure-openai'
+        ? createDefaultAzureOpenAIProfile(fallback)
+        : createDefaultOpenAIProfile(fallback)
   const apiMode: ApiMode = record.apiMode === 'responses' ? 'responses' : 'images'
 
   return {
@@ -337,6 +402,16 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
     apiMode,
     codexCli: Boolean(record.codexCli),
     apiProxy: Boolean(record.apiProxy),
+    authScheme: (record.authScheme === 'apiKey' || record.authScheme === 'bearer')
+      ? record.authScheme
+      : defaults.authScheme,
+    baseUrlMode: (record.baseUrlMode === 'raw' || record.baseUrlMode === 'openai_v1')
+      ? record.baseUrlMode
+      : defaults.baseUrlMode,
+    azureDeployment: typeof record.azureDeployment === 'string' ? record.azureDeployment : defaults.azureDeployment,
+    azureApiVersion: typeof record.azureApiVersion === 'string' && record.azureApiVersion.trim()
+      ? record.azureApiVersion.trim()
+      : defaults.azureApiVersion,
   }
 }
 
@@ -400,11 +475,12 @@ export function getCustomProviderDefinition(settings: Partial<AppSettings> | unk
 export function getApiProviderLabel(settings: Partial<AppSettings> | unknown, provider: ApiProvider): string {
   if (provider === 'fal') return 'fal.ai'
   if (provider === 'openai') return 'OpenAI'
+  if (provider === 'azure-openai') return 'Azure OpenAI'
   return getCustomProviderDefinition(settings, provider)?.name ?? provider
 }
 
 export function isOpenAICompatibleProvider(settings: Partial<AppSettings> | unknown, provider: ApiProvider): boolean {
-  return provider === 'openai' || Boolean(getCustomProviderDefinition(settings, provider))
+  return provider === 'openai' || provider === 'azure-openai' || Boolean(getCustomProviderDefinition(settings, provider))
 }
 
 export interface ImportedProviderSettings {
@@ -489,6 +565,8 @@ export function validateApiProfile(profile: ApiProfile): string | null {
   if (profile.provider !== 'fal' && !profile.baseUrl.trim()) return '缺少 API URL'
   if (!profile.apiKey.trim()) return '缺少 API Key'
   if (!profile.model.trim()) return '缺少模型 ID'
+  if (profile.provider === 'azure-openai' && !profile.azureDeployment.trim()) return '缺少 Deployment'
+  if (profile.provider === 'azure-openai' && !profile.azureApiVersion.trim()) return '缺少 API Version'
   return null
 }
 

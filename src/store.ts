@@ -1353,6 +1353,38 @@ export async function reuseConfig(task: TaskRecord) {
   )
 }
 
+/** 继续对话生图：复用当前任务参数，并仅带入一张输出图作为输入 */
+export async function continueWithOutputImage(task: TaskRecord, outputImageId: string) {
+  const { settings, setPrompt, setParams, setInputImages, clearMaskDraft, showToast, setReusedTaskApiProfile } = useStore.getState()
+  const normalizedSettings = normalizeSettings(settings)
+  const currentProfile = getActiveApiProfile(settings)
+  const matchedProfile = normalizedSettings.reuseTaskApiProfileTemporarily ? getTaskApiProfile(normalizedSettings, task) : null
+  const shouldTemporarilyReuseProfile = Boolean(matchedProfile && matchedProfile.id !== currentProfile.id)
+  const missingReusedProfile = normalizedSettings.reuseTaskApiProfileTemporarily && !matchedProfile
+  const taskProfileName = matchedProfile?.name ?? getTaskApiProfileName(task)
+  const paramsSettings = shouldTemporarilyReuseProfile && matchedProfile ? createSettingsForApiProfile(normalizedSettings, matchedProfile) : normalizedSettings
+
+  const revised = task.revisedPromptByImage?.[outputImageId]?.trim()
+  setPrompt(revised || task.prompt)
+  setParams(normalizeParamsForSettings(task.params, paramsSettings, { hasInputImages: true }))
+  setReusedTaskApiProfile(
+    shouldTemporarilyReuseProfile && matchedProfile ? matchedProfile.id : null,
+    missingReusedProfile,
+    taskProfileName,
+  )
+
+  const dataUrl = await ensureImageCached(outputImageId)
+  setInputImages(dataUrl ? [{ id: outputImageId, dataUrl }] : [])
+  clearMaskDraft()
+
+  const effectiveProfile = shouldTemporarilyReuseProfile && matchedProfile ? matchedProfile : currentProfile
+  if (effectiveProfile.apiMode !== 'responses') {
+    showToast('已带入上一轮输出图。建议将 API 接口切换为 Responses 以进行多轮对话生图。', 'info')
+  } else {
+    showToast('已带入上一轮输出图，可继续提交生成', 'success')
+  }
+}
+
 /** 编辑输出：将输出图加入输入 */
 export async function editOutputs(task: TaskRecord) {
   const { inputImages, addInputImage, showToast } = useStore.getState()

@@ -1,4 +1,5 @@
 import { readRuntimeEnv } from './runtimeEnv'
+import type { ApiBaseUrlMode } from '../types'
 
 export interface DevProxyConfig {
   enabled: boolean
@@ -60,17 +61,32 @@ export function buildApiUrl(
   proxyConfig?: DevProxyConfig | null,
   useApiProxy = false,
 ): string {
+  return buildApiUrlWithMode(baseUrl, path, proxyConfig, useApiProxy, 'openai_v1')
+}
+
+export function buildApiUrlWithMode(
+  baseUrl: string,
+  path: string,
+  proxyConfig: DevProxyConfig | null | undefined,
+  useApiProxy: boolean,
+  mode: ApiBaseUrlMode,
+): string {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
   const endpointPath = path.replace(/^\/+/, '')
-  const apiPath = normalizedBaseUrl.endsWith('/v1')
-    ? endpointPath
-    : ['v1', endpointPath].join('/')
+  const apiPath =
+    mode === 'raw'
+      ? endpointPath
+      : normalizedBaseUrl.endsWith('/v1')
+        ? endpointPath
+        : ['v1', endpointPath].join('/')
 
   if (useApiProxy) {
     return `${proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${apiPath}`
   }
 
-  return normalizedBaseUrl ? `${normalizedBaseUrl}/${apiPath}` : `/${apiPath}`
+  if (!normalizedBaseUrl) return `/${apiPath}`
+  const root = mode === 'raw' ? baseUrl.trim().replace(/\/+$/, '') : normalizedBaseUrl
+  return `${root}/${apiPath}`
 }
 
 export function resolveDevProxyConfig(input: unknown, isDev: boolean): DevProxyConfig | null {
